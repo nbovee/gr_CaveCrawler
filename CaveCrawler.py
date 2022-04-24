@@ -20,7 +20,7 @@ class Timer():
         """Resets the timer."""
         self.start_ticks = ticks_ms()
 
-
+# agnostic class for a given error funct
 class Error:
     def __init__(self, func) -> None:
         self.error_func = func
@@ -30,6 +30,9 @@ class Error:
     def set_target(self, target):
         self.target = target
 
+    def get_target(self):
+        return self.target
+
     def update_error(self):
         if self.target is not None:
             new_error = self.target - self.error_func()
@@ -37,69 +40,109 @@ class Error:
             self.e_i += new_error
             self.e = new_error
 
-class RPM_Handler:
-    
-    rpm_interval = 0.2
-
-    def __init__(self, motor):
-        self.__target_motor = motor
-        self.__timer = Timer()
-        self.last_angle = self.__target_motor.get_degrees_counted() # I don't like the coupling but we're stuck in monolith dev anyway
-        self.rpm = None
-
-    def update_RPM(self): # change to yields so an interval can be forced
-        self.__timer.reset()
-        while self.__timer.now() < self.rpm_interval:
-            yield self.rpm
-        current_angle = self.get_degrees_counted() # process this to account for negatives. use total angle turned perhaps?
-        self.rpm = (current_angle - self.last_angle) / self.__timer.now()
-        self.last_angle = current_angle
-        yield self.rpm
-
-    
-# need to add RPM calculation to accurately control motor speed. Position cannot be used as a stable speed is important to maintain pose
+# PID for generic motor    
 class PID_Motor(Motor):
 
-    def __init__(self, port, forward = True, k = 0., t_i = 0., t_d = 0., backlash = 0) -> None:
+    def __init__(self, port, k = 0.01, t_i = 1., t_d = 1., backlash = 0, power_ratio = 0.25) -> None:
         super().__init__(port)
-        self.direction =  1 if forward else -1
         self.k = k
         self.t_i = t_i
         self.t_d = t_d
         self.backlash = backlash
+        self.power_ratio = power_ratio
         self.__error = Error(self.get_degrees_counted)
-        self.__error.set_target(None)
-        self.rpm_handler = RPM_Handler(self)
-        self.rpm_generator = self.rpm_handler.update_RPM()
-        self.rpm = next(self.rpm_generator)
+        self.set_target(None)
+        self.set_stop_action("brake")
 
-    # MUST BE CALLED EVERY MAIN CYCLE AS WELL
-    def update_rpm(self):
-        self.rpm = next(self.rpm_generator) 
 
-    def set_target(self, target):
-        self.__error.set_target(target)
+    def set_target_angle_relative(self, target):
+        current_degrees = self.__error.get_degrees_counted()
+        result = current_degrees + target
+        self.__error.set_target(result)
 
-    def pid_calc(self, power):
-        self.update_RPM() # just in case
+    def get_target_angle(self):
+        return self.get_degrees_counted()
+
+    def pid_calc(self):
         self.__error.update_error()
-        pid_term = self.k * ( self.__error.e + 1. / self.t_i* self.__error.e_i + self.t_d * self.__error.e_d)
-        return power #  + pid_term #done correctly this should not be two parts added together
+        new_power = self.k * ( self.__error.e + 1. / self.t_i* self.__error.e_i + self.t_d * self.__error.e_d)
+        return new_power
 
-    def start_at_power(self, power):
-        raise Exception("defunct function")
-
-    def start_at_rpm(self, power):
-        self.set_target(power)
-        new_power = self.pid_calc(power)
+    # quick way to make this work is recheck it at the start of each main() loop
+    # the right way is to register them in a handler method
+    def update_pid_outout(self):
+        new_power = self.pid_calc()
         super.start_at_power(new_power)
 
+    def start_at_power(self, power):
+        raise Exception("Unsupported method.")
+
+# handle drive motors    
+class MotorPair:
+
+    wheel_base_cm = 12.2
+    wheel_diameter_cm = 5.6
+
+    def __init__(self, l_motor, r_motor) -> None:
+        self.l_motor = PID_Motor(l_motor)
+        self.r_motor = PID_Motor(r_motor)
+        self.l_target = 0 # self.l_motor.get_degrees_counted()
+        self.r_target = 0 # self.r_motor.get_degrees_counted()
+        self.l_motor.set_target_angle_relative(self.l_target)
+        self.r_motor.set_target_angle_relative(self.r_target)
+
+
+    def adjust_pid(self):
+        self.l_motor.update_pid_outout()
+        self.r_motor.update_pid_outout()
+
+    def set_target_dist_cm(self, distance):
+        rotation = 360 * distance / (pi * wheel_diameter_cm)
+        self.l_motor.set_target_angle_relative(-rotation)
+        self.r_motor.set_target_angle_relative(rotation)
+
+    def set_target_turn_angle(self, angle):
+        distance = wheel_base_cm * 2 * pi
+        rotation = angle / 360 * distance / (pi * wheel_diameter_cm)
+        self.l_motor.set_target_angle_relative(rotation)
+        self.r_motor.set_target_angle_relative(rotation)
+
+# better than nothing
+class Odometer:
+
+    def __init__(self, prime_hub) -> None:
+        self.__hub = prime_hub
+        self.x_vel = 0
+        self.y_vel = 0
+        self.x_loc = 0
+        self.y_loc = 0
+        self.yaw = self.__hub.motion.get_yaw_angle()
+        self.__timer = Timer()
+    
+    def adjust_odometry(self):
+        accel = self.hub.accelerometer()
+        gyro = self.hub.gyroscope()
+        now = self.__timer.now()**2
+        self.__timer.reset()
+        self.x_vel += accel[0]*now
+        self.x_loc += self.x_vel*now
+        self.y_vel += accel[1]*now
+        self.y_loc += self.y_vel*now
+        self.yaw = self.__hub.get_yaw_angle()
+
+class Map:
+    cell_size_cm = 2
+
+    def __init__(self) -> None:
+        
+        
+
+        
 # things that would usually be in a config file
 # lowest measured peak rpm was 151, we will target for 135rpm of that as our max output to allow for PID to adjust
 # in practice we will aim for at most 50% of that value to avoid instability
-wheel_base_cm = 12.2
-wheel_diameter_cm = 5.6
-l_ultrasonic_offset, r_ultrasonic_offset = 15.5/2
+
+l_ultrasonic_offset = r_ultrasonic_offset = 15.5/2
 f_ultrasonic_offset = 8.5
 l_motor_backlash_deg = 5
 r_motor_backlash_deg = 6
@@ -111,8 +154,8 @@ r_ultrasonic = "D"
 
 # initialize global objects
 hub = PrimeHub()
-l_motor = Motor(l_motor)
-r_motor = Motor(r_motor)
+odometer = Odometer(hub)
+motors = MotorPair(l_motor, r_motor)
 f_ultrasonic = DistanceSensor(f_ultrasonic)
 l_ultrasonic = DistanceSensor(l_ultrasonic)
 r_ultrasonic = DistanceSensor(r_ultrasonic)
@@ -125,15 +168,11 @@ def wheel_travel_distance(rotations):
 
 # Python doesn't have built in constants, but we're going to agree to never
 # change the following variables.
-CONST_MAX_YAW = 45
-CONST_MIN_YAW = - CONST_MAX_YAW
 CONST_MAX_SPIKE_CM_DIST = 200
 CONST_DETECTION_MAX_DIST_CM = 30
 CONST_APPROACH_DIST_CM = 4
 CONST_WAIT_TIME = 0.1
 CONST_POW = 10
-
-
 
 
 
@@ -145,6 +184,7 @@ def updateUltrasonic():
 
 
 def main():
+    motors.adjust_pid()
     searchAndApproach()
     raise SystemExit
 
