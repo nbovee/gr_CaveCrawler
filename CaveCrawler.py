@@ -1,5 +1,3 @@
-from multiprocessing.connection import wait
-from operator import add
 from spike import PrimeHub, LightMatrix, Button, StatusLight, ForceSensor, MotionSensor, Speaker, ColorSensor, App, DistanceSensor, Motor, MotorPair
 from math import *
 from utime import sleep as wait_for_seconds
@@ -7,27 +5,11 @@ from utime import ticks_diff, ticks_ms
 from spike.control import wait_until
 
 
-# portions from https://gist.github.com/dlech/fa48f9b2a3a661c79c2c5880684b63ae
-
-# spike.control.Timer doesn't allow decimal points
-class Timer():
-    """Replacement Timer class that allows decimal points so we can measure times of less than one second."""
-    def __init__(self):
-        self.start_ticks = ticks_ms() - 1 # avoid divide by zeros later on
-
-    def now(self):
-        """Returns the time in seconds since the timer was last reset."""
-        return ticks_diff(ticks_ms(), self.start_ticks) / 1000
-
-    def reset(self):
-        """Resets the timer."""
-        self.start_ticks = ticks_ms()
-
 # things that would usually be in a config file
 wheel_base_cm = 12.2
 wheel_diameter_cm = 5.6
 # update this
-l_ultrasonic_offset = r_ultrasonic_offset = 15.5/2
+l_ultrasonic_offset = r_ultrasonic_offset = 6
 # f_ultrasonic_offset = 8.5
 # l_motor_backlash_deg = 5
 # r_motor_backlash_deg = 6
@@ -43,7 +25,6 @@ CONST_MAX_SPIKE_CM_DIST = 200
 CONST_DETECTION_MAX_DIST_CM = 30
 CONST_APPROACH_DIST_CM = 4
 CONST_WAIT_TIME = 0.1
-
 CONST_MAP_CELL_SIZE = 2
 
 # initialize global objects
@@ -52,6 +33,7 @@ motors = MotorPair(l_motor, r_motor)
 turret = Motor(turret_motor)
 motors.set_stop_action("hold")
 turret.set_stop_action("hold")
+turret.set_default_speed(20)
 # f_ultrasonic = DistanceSensor(f_ultrasonic)
 l_ultrasonic = DistanceSensor(l_ultrasonic)
 r_ultrasonic = DistanceSensor(r_ultrasonic)
@@ -74,7 +56,7 @@ def turn_for_degrees(degrees):
 def take_turret_reading():
     '''return a pair of readings from the ultrasonic turret at the current location'''
     def take_distance_reading(ultrasonic):
-        range = ultrasonic.range()
+        range = ultrasonic.get_distance_cm()
         value = 1
         if range is None:
             range = CONST_MAX_SPIKE_CM_DIST
@@ -85,26 +67,28 @@ def take_turret_reading():
     wait_for_seconds(CONST_WAIT_TIME)
     (range_r, value_r) = take_distance_reading(r_ultrasonic)
     wait_for_seconds(CONST_WAIT_TIME)
-    heading = turret.get_angle()
-    return [(range_l + l_ultrasonic_offset, heading - 90, value_l), (range_r + r_ultrasonic_offset, heading + 90, value_r)]
+    heading = turret.get_position()
+    return [(range_l + l_ultrasonic_offset, (heading - 90) % 360, value_l), (range_r + r_ultrasonic_offset, (heading + 90) % 360, value_r)]
 
 
-def map_current_location(robot_location):
+def map_current_location(map, robot_location):
     '''take 360 degree ultrasonic readings from the current locations'''
-    # bias the sensor to avoid backlash
-    turret.move_to(-5)
+    # list comprehension fails for some reason...
+    # newmap = [[ 0 for g in range(2*200/CONST_MAP_CELL_SIZE)] for k in range(2*200/CONST_MAP_CELL_SIZE)]
+    turret.run_to_position(10, direction = "shortest path")
+    turret.run_to_position(359-5, direction = "counterclockwise")
     readings = []
-    for i in range(0,180,5):
-        turret.move_to(i)
+    for i in range(0,180,6):
+        turret.run_to_position(i, direction = "clockwise")
         wait_for_seconds(CONST_WAIT_TIME)
         readings.extend(take_turret_reading())
-    turret.move_to(-5)
+    turret.run_to_position(359-5, direction = "counterclockwise")
     for reading in readings:
-        (range, heading, value) = reading
+        (range_cm, heading, value) = reading
         # fill in detected cell
         add_coordinate_to_map(map, reading_to_relative_coordinate(reading, robot_location))
         # fill in empty cells between
-        for i in range(range, 0, CONST_MAP_CELL_SIZE):
+        for i in range(range_cm - 10, 0, -10):
             add_coordinate_to_map(map, reading_to_relative_coordinate((i, heading, -1), robot_location))
     
 
@@ -113,14 +97,16 @@ def reading_to_relative_coordinate(reading, robot_location):
     # cos, sin
     # check that these are correctly offset
     (range, heading, value) = reading
-    x_coor = range*sin(radians(heading + robot_location.yaw))
-    y_coor = range*cos(radians(heading + robot_location.yaw))
-    return (robot_location.x + x_coor, robot_location.y + y_coor, value)
+    range = range / 200 * 17
+    x_coor = range*sin(radians(heading + robot_location[2]))
+    y_coor = range*cos(radians(heading + robot_location[2]))
+    return (robot_location[0] + x_coor, robot_location[1] + y_coor, value)
 
 def add_coordinate_to_map(map, coordinate):
     '''edit a map coordinate to the specified value. Methodized to avoid mistakes.'''
     (x, y, value) = coordinate
-    map[x][y] = value
+    # convert to map cell sizes smaller than 1cm.
+    map[int(x)][int(y)] = value
 
 def offset_map(map, robot_location, offset):
     return None
@@ -148,14 +134,34 @@ def main():
     # A* search main map
 
     # drive_for_cm(5)
-    drive_for_cm(2)
-    wait_for_seconds(CONST_WAIT_TIME)
-    drive_for_cm(2)
-    wait_for_seconds(CONST_WAIT_TIME)
-    drive_for_cm(2)
-    wait_for_seconds(CONST_WAIT_TIME)
-    drive_for_cm(2)
-    # turn_for_degrees(-5)
+    robot_location = [18, 18, 0]
+    newmap = []
+    for i in range(36):
+        newmap.append([])
+        for j in range(36):
+            newmap[i].append(0)
+    newmap[18][18] = 2
+
+    for i in newmap:
+        for j in i:
+            if j == 0:
+                print("-", end = " ")
+            else:
+                print(j, end = " ")
+        print()
+        
+    map_current_location(newmap, robot_location)
+    newmap[18][18] = 2
+
+    for i in newmap:
+        for j in i:
+            if j == 1 or j == 2:
+                print(j, end = " ")
+            if j == 0:
+                print("-", end = " ")
+            else:
+                print(" ", end = " ")
+        print()
     raise SystemExit
 
 main()
