@@ -11,7 +11,7 @@ import uarray as array
 wheel_base_cm = 12.2
 wheel_diameter_cm = 5.6
 # is this right offset?
-l_ultrasonic_offset = r_ultrasonic_offset = 6
+l_ultrasonic_offset = r_ultrasonic_offset = 7
 l_us_angle = - 90
 r_us_angle = 90
 l_motor = "E"
@@ -21,23 +21,26 @@ r_ultrasonic = "C"
 turret_motor = "D"
 # Python doesn't have built in constants, but we're going to agree to never
 # change the following variables.
+
+#63.5 x 152.5 cm2 area
 CONST_DETECTION_MAX_DIST_CM = 30
 CONST_APPROACH_DIST_CM = 4
 CONST_WAIT_TIME = 0.1
-CONST_MAP_EDGE = 40
-CONST_MAP_CELL_SIZE = 5 #12 # approx wheel base size so pathing is already at robot width
+CONST_MAP_EDGE_X = 26
+CONST_MAP_EDGE_Y = 56
+CONST_MAP_CELL_SIZE = 3 #12 # approx wheel base size so pathing is already at robot width
 CONST_MOTOR_SPEED = 30
 CONST_TURRET_SPEED = 20
 CONST_STOP_ACTION = "hold"
-CONST_USE_SHORTRANGE = True
-CONST_MAX_SPIKE_CM_DIST = 200
+CONST_USE_SHORTRANGE = False
+CONST_MAX_SPIKE_CM_DIST = 70
 if CONST_USE_SHORTRANGE:
     CONST_MAX_SPIKE_CM_DIST = 30
 CONST_TURRET_HOME = 0
 CONST_TURRET_ANGLE_STEP = 4
 CONST_TURRET_SWEEP_END = 180 + CONST_TURRET_HOME + CONST_TURRET_ANGLE_STEP + 1
 
-synthetic_reading_list = [(34, 262, 'obstacle'), (21, 82, 'obstacle'), (34, 270, 'obstacle'), (21, 90, 'obstacle'), (35, 276, 'obstacle'), (36, 96, 'obstacle'), (36, 280, 'obstacle'), (34, 100, 'obstacle'), (40, 285, 'obstacle'), (37, 105, 'obstacle'), (40, 291, 'obstacle'), (206, 111, 'empty'), (38, 299, 'obstacle'), (206, 119, 'empty'), (39, 303, 'obstacle'), (206, 123, 'empty'), (46, 312, 'obstacle'), (206, 132, 'empty'), (46, 316, 'obstacle'), (206, 136, 'empty'), (46, 322, 'obstacle'), (206, 142, 'empty'), (45, 329, 'obstacle'), (206, 149, 'empty'), (47, 335, 'obstacle'), (95, 155, 'obstacle'), (38, 341, 'obstacle'), (95, 161, 'obstacle'), (41, 346, 'obstacle'), (94, 166, 'obstacle'), (34, 353, 'obstacle'), (95, 173, 'obstacle'), (35, 0, 'obstacle'), (94, 180, 'obstacle'), (34, 3, 'obstacle'), (206, 183, 'empty'), (39, 10, 'obstacle'), (206, 190, 'empty'), (34, 17, 'obstacle'), (206, 197, 'empty'), (41, 21, 'obstacle'), (206, 201, 'empty'), (39, 28, 'obstacle'), (206, 208, 'empty'), (39, 33, 'obstacle'), (206, 213, 'empty'), (39, 40, 'obstacle'), (206, 220, 'empty'), (39, 47, 'obstacle'), (206, 227, 'empty'), (39, 51, 'obstacle'), (206, 231, 'empty'), (20, 58, 'obstacle'), (206, 238, 'empty'), (20, 63, 'obstacle'), (206, 243, 'empty'), (20, 70, 'obstacle'), (206, 250, 'empty'), (21, 76, 'obstacle'), (206, 256, 'empty'), (21, 82, 'obstacle'), (206, 262, 'empty'), (21, 87, 'obstacle'), (206, 267, 'empty')]
+# synthetic_reading_list = [(34, 262, 'obstacle'), (21, 82, 'obstacle'), (34, 270, 'obstacle'), (21, 90, 'obstacle'), (35, 276, 'obstacle'), (36, 96, 'obstacle'), (36, 280, 'obstacle'), (34, 100, 'obstacle'), (40, 285, 'obstacle'), (37, 105, 'obstacle'), (40, 291, 'obstacle'), (206, 111, 'empty'), (38, 299, 'obstacle'), (206, 119, 'empty'), (39, 303, 'obstacle'), (206, 123, 'empty'), (46, 312, 'obstacle'), (206, 132, 'empty'), (46, 316, 'obstacle'), (206, 136, 'empty'), (46, 322, 'obstacle'), (206, 142, 'empty'), (45, 329, 'obstacle'), (206, 149, 'empty'), (47, 335, 'obstacle'), (95, 155, 'obstacle'), (38, 341, 'obstacle'), (95, 161, 'obstacle'), (41, 346, 'obstacle'), (94, 166, 'obstacle'), (34, 353, 'obstacle'), (95, 173, 'obstacle'), (35, 0, 'obstacle'), (94, 180, 'obstacle'), (34, 3, 'obstacle'), (206, 183, 'empty'), (39, 10, 'obstacle'), (206, 190, 'empty'), (34, 17, 'obstacle'), (206, 197, 'empty'), (41, 21, 'obstacle'), (206, 201, 'empty'), (39, 28, 'obstacle'), (206, 208, 'empty'), (39, 33, 'obstacle'), (206, 213, 'empty'), (39, 40, 'obstacle'), (206, 220, 'empty'), (39, 47, 'obstacle'), (206, 227, 'empty'), (39, 51, 'obstacle'), (206, 231, 'empty'), (20, 58, 'obstacle'), (206, 238, 'empty'), (20, 63, 'obstacle'), (206, 243, 'empty'), (20, 70, 'obstacle'), (206, 250, 'empty'), (21, 76, 'obstacle'), (206, 256, 'empty'), (21, 82, 'obstacle'), (206, 262, 'empty'), (21, 87, 'obstacle'), (206, 267, 'empty')]
 
 #could rework this into a dict, or list of readings, for clear representation, but is arrays for memory conservation
 class Map:
@@ -74,7 +77,10 @@ class Map:
         for i in range(height):
             self.map.append(array.array(Map.map_storage_vals["d_type"]))
             for j in range(width):
-                self.map[i].append(Map.map_storage_vals["new"])
+                # if i == 0 or i == height -1 or j == 0 or j == width -1:
+                #     self.map[i].append(Map.map_storage_vals["obstacle"])
+                # else:
+                    self.map[i].append(Map.map_storage_vals["new"])
 
     def add_to_map(self, id, value : str):
         (x ,y) = id
@@ -115,12 +121,15 @@ class Map:
                 if j == self.robot_location_x and i == self.robot_location_y:
                     output += self.map_display_vals[Map.map_storage_vals["robot"]] + ' '    
                 else:
-                    output += self.map_display_vals[self.map[j][i]] + ' '
+                    output += self.map_display_vals[self.map[i][j]] + ' '
             output += '\n'
         return output
 
     def getitem(self, x, y):
-        return self.map[y][x]
+        if self.in_bounds((x, y)):
+            return self.map[y][x]
+        else:
+            return None
     
     def setitem(self, x, y, value):
         self.map[y][x] = value
@@ -131,7 +140,7 @@ class Map:
         assert self.height == map2.height
         score = 0
         for i in range(self.height):
-            for j in range(self.height):
+            for j in range(self.width):
                 score += self.getitem(j, i) * map2.getitem(j, i) 
         # check width and height
         # multiple cellwise & return sum
@@ -171,9 +180,10 @@ def take_turret_reading():
     def take_distance_reading(ultrasonic):
         range = ultrasonic.get_distance_cm(short_range = CONST_USE_SHORTRANGE)
         value = "obstacle"
-        if range is None:
+        if range is None or range > CONST_MAX_SPIKE_CM_DIST:
             range = CONST_MAX_SPIKE_CM_DIST
             value = "empty"
+
         return (range, value)
     (range_l, value_l) = take_distance_reading(l_ultrasonic)
     wait_for_seconds(CONST_WAIT_TIME)
@@ -204,11 +214,11 @@ def convert_readings_to_map(readings, map):
         # fill in detected cell
         loc_val = reading_to_coordinate(reading, map.current_location())
         add_coordinate_to_map(map, loc_val)
-        # (x, y, _ ) = loc_val
+        (x, y, _ ) = loc_val
         # add neighbors as a buffer
-        # for cell in map.neighbors((x, y)):
-        #     (t_x, t_y) = cell
-        #     add_coordinate_to_map(map, (t_x, t_y, value))
+        for cell in map.neighbors((x, y)):
+            (t_x, t_y) = cell
+            add_coordinate_to_map(map, (t_x, t_y, value))
         # fill in empty cells between
         for i in range(range_cm - CONST_MAP_CELL_SIZE, 0, -CONST_MAP_CELL_SIZE):
             add_coordinate_to_map(map, reading_to_coordinate((i, heading, "empty"), map.current_location()))
@@ -222,36 +232,39 @@ def reading_to_coordinate(reading, robot_location):
     (x, y, yaw) = robot_location
     range = range / CONST_MAP_CELL_SIZE
     # range = range / CONST_MAX_SPIKE_CM_DIST * CONST_MAP_CELL_SIZE
-    x_coor = -range*cos(radians(heading + yaw))
+    x_coor = range*sin(radians(heading + yaw))
     # correct y_coordinate to N being 0 degrees for world coordinates
-    y_coor = range*sin(radians(heading + yaw))
-    return (x + x_coor, y + y_coor, value)
+    y_coor = -range*cos(radians(heading + yaw))
+    return (round(x + x_coor), round(y + y_coor), value)
 
 def add_coordinate_to_map(map: Map, coordinate):
     '''edit a map coordinate to the specified value. Methodized to avoid mistakes.'''
     (x, y, value) = coordinate
+    x = round(x)
+    y = round(y)
     # only overwrite empty or new locations
-    key = (x, y)
-    map_dict = map.expose()
-    if key in map_dict:
-        current_val = map_dict[key]
+    location_value = map.getitem(x, y)
         # only overwrite non-obstacle values
-        if map.map_storage_vals["obstacle"] != current_val:
-            map.add_to_map(key, value)
-    else:
-        map.add_to_map(key, value)
+    if location_value is not None and map.map_storage_vals["obstacle"] != location_value:
+        map.add_to_map((x,y), value)
 
 
-def offset_map(map, offset_x, offset_y):
+
+def offset_map(map, offset):
+    (offset_x, offset_y) = offset
+    if offset_x == 0 and offset_y ==0:
+        return map # early exit
     (x_loc, y_loc, yaw) = map.current_location()
     newmap = Map(map.width, map.height, (x_loc + offset_x, y_loc + offset_y, yaw))
     for i in range(map.height):
         for j in range(map.width):
-            newmap.add_to_map((j + offset_x, i + offset_y), map.map_storage_keys[map.getitem(j,i)])
+            add_coordinate_to_map(newmap,(j + offset_x, i + offset_y, map.map_storage_keys[map.getitem(j,i)]))
     return newmap
 
 # could only write obstacle values, then reprocess empty spaces for higher accuracy
 def rotate_map(map, angle):
+    if angle == 0:
+        return map # exit exit
     robot_location = map.current_location()
     (x_loc, y_loc, yaw ) = robot_location
     newmap = Map(map.width, map.height, robot_location)
@@ -266,29 +279,40 @@ def rotate_map(map, angle):
             hyp = sqrt(x_dist ** 2 + y_dist ** 2)
             x_new = hyp * cos(new_angle)
             y_new = hyp * sin(new_angle)
-            newmap.add_to_map((round(x_new) + x_loc, round(y_new) + y_loc), value)
+            add_coordinate_to_map(newmap, (round(x_new) + x_loc, round(y_new) + y_loc, value))
     return newmap
 
-
+def drift_calculation(prev_map, cur_map):
+    linear_offsets = [(0,0), (-1, 0), (1, 0), (0,-1), (0, 1)] # forward and back drift seems tough, but must be considered
+    angular_offsets = [0, -5, 5] # major angular drift seems much harder to achieve
+    scores = []
+    for l in linear_offsets:
+        for a in angular_offsets:
+            score = prev_map.compare_equal_shape_map(rotate_map(offset_map(cur_map, l), a))
+            scores.append((score, l, a))
+    print(scores)
+    return max(scores)
 
 def test_loop():
     global hub
-    robot_location = (int(CONST_MAP_EDGE/2), int(CONST_MAP_EDGE/2), hub.motion_sensor.get_yaw_angle())
-    print(robot_location[2])
-    map = Map(CONST_MAP_EDGE, CONST_MAP_EDGE, robot_location)
+    
+    robot_location = (4, CONST_MAP_EDGE_Y - 6, hub.motion_sensor.get_yaw_angle())
+    map = Map(CONST_MAP_EDGE_X, CONST_MAP_EDGE_Y, robot_location)
     # print("Before Scanning:")
-    # print(newmap)
+    # print(map)
     map_current_location(map)
-    # convert_readings_to_map(synthetic_reading_list, map, robot_location)
-    # print("Synthetic Map:")
-    # map.expose()[robot_location[0]][robot_location[1]] = 2
-    print(map)# newmap[robot_location[0]][robot_location[1]] = Map.map_storage_vals["robot"]
-    # map2 = rotate_map(map, 10)
-    # map3 = offset_map(map, 1, 1)
-    # print("Shifted Map")
-    # print(map2)
-    # print(map.compare_equal_shape_map(map2))
-    # print(map.compare_equal_shape_map(map3))
+    # print("After Mapping:")
+    # print(map)
+    turn_for_degrees(90)
+    drive_for_cm(5 * CONST_MAP_CELL_SIZE)
+    robot_location_2 = (4 + 5 , CONST_MAP_EDGE_Y -6, robot_location[2]+90)
+    newmap = Map(CONST_MAP_EDGE_X, CONST_MAP_EDGE_Y, robot_location_2)
+    map_current_location(newmap)
+    # print("Second Location:")
+    # print(newmap)
+    ideal = drift_calculation(map, newmap)
+    print(ideal)
+
     return True
 
 
