@@ -500,6 +500,7 @@ def pathfind(map, goal):
     cost_so_far[start] = 0
     # print('Hi, frontier')
     while bool(frontier):  # empty lists are falsey
+        print(gc.mem_free())
         current = heapq.heappop(frontier)
         (score, (c_x, c_y)) = current
         current_id = (c_x, c_y)
@@ -508,9 +509,9 @@ def pathfind(map, goal):
             break
         for next in map.neighbors(current_id):
             partial_cost = map.cost(current_id, next)
-            print(partial_cost)
             new_cost = cost_so_far[current_id] + partial_cost
             if next not in cost_so_far or new_cost < cost_so_far[next]:
+                print(gc.mem_free())
                 cost_so_far[next] = new_cost
                 priority = new_cost + heuristic(goal, next)
                 heapq.heappush(frontier, (priority, next))
