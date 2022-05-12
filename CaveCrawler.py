@@ -1,4 +1,4 @@
-from queue import PriorityQueue
+import heapq
 from spike import PrimeHub, DistanceSensor, Motor, MotorPair
 from math import radians, degrees, cos, sin, pi, copysign, sqrt, atan2
 from utime import sleep as wait_for_seconds
@@ -45,9 +45,105 @@ CONST_TURRET_SWEEP_END = 180 + CONST_TURRET_HOME + CONST_TURRET_ANGLE_STEP + 1
 CONST_HOME = (4, CONST_MAP_EDGE_Y - 6)
 CONST_GOAL = (4, 4)
 
-# synthetic_reading_list = [(34, 262, 'obstacle'), (21, 82, 'obstacle'), (34, 270, 'obstacle'), (21, 90, 'obstacle'), (35, 276, 'obstacle'), (36, 96, 'obstacle'), (36, 280, 'obstacle'), (34, 100, 'obstacle'), (40, 285, 'obstacle'), (37, 105, 'obstacle'), (40, 291, 'obstacle'), (206, 111, 'empty'), (38, 299, 'obstacle'), (206, 119, 'empty'), (39, 303, 'obstacle'), (206, 123, 'empty'), (46, 312, 'obstacle'), (206, 132, 'empty'), (46, 316, 'obstacle'), (206, 136, 'empty'), (46, 322, 'obstacle'), (206, 142, 'empty'), (45, 329, 'obstacle'), (206, 149, 'empty'), (47, 335, 'obstacle'), (95, 155, 'obstacle'), (38, 341, 'obstacle'), (95, 161, 'obstacle'), (41, 346, 'obstacle'), (94, 166, 'obstacle'), (34, 353, 'obstacle'), (95, 173, 'obstacle'), (35, 0, 'obstacle'), (94, 180, 'obstacle'), (34, 3, 'obstacle'), (206, 183, 'empty'), (39, 10, 'obstacle'), (206, 190, 'empty'), (34, 17, 'obstacle'), (206, 197, 'empty'), (41, 21, 'obstacle'), (206, 201, 'empty'), (39, 28, 'obstacle'), (206, 208, 'empty'), (39, 33, 'obstacle'), (206, 213, 'empty'), (39, 40, 'obstacle'), (206, 220, 'empty'), (39, 47, 'obstacle'), (206, 227, 'empty'), (39, 51, 'obstacle'), (206, 231, 'empty'), (20, 58, 'obstacle'), (206, 238, 'empty'), (20, 63, 'obstacle'), (206, 243, 'empty'), (20, 70, 'obstacle'), (206, 250, 'empty'), (21, 76, 'obstacle'), (206, 256, 'empty'), (21, 82, 'obstacle'), (206, 262, 'empty'), (21, 87, 'obstacle'), (206, 267, 'empty')]
+synthetic_reading_list = [
+    (19, 263, "obstacle"),
+    (51, 83, "obstacle"),
+    (19, 272, "obstacle"),
+    (51, 92, "obstacle"),
+    (18, 272, "obstacle"),
+    (51, 92, "obstacle"),
+    (19, 278, "obstacle"),
+    (52, 98, "obstacle"),
+    (19, 281, "obstacle"),
+    (51, 101, "obstacle"),
+    (19, 284, "obstacle"),
+    (51, 104, "obstacle"),
+    (19, 287, "obstacle"),
+    (52, 107, "obstacle"),
+    (20, 291, "obstacle"),
+    (51, 111, "obstacle"),
+    (21, 296, "obstacle"),
+    (53, 116, "obstacle"),
+    (28, 300, "obstacle"),
+    (54, 120, "obstacle"),
+    (28, 303, "obstacle"),
+    (56, 123, "obstacle"),
+    (27, 311, "obstacle"),
+    (57, 131, "obstacle"),
+    (27, 310, "obstacle"),
+    (57, 130, "obstacle"),
+    (29, 317, "obstacle"),
+    (77, 137, "empty"),
+    (28, 320, "obstacle"),
+    (77, 140, "empty"),
+    (29, 324, "obstacle"),
+    (77, 144, "empty"),
+    (77, 330, "empty"),
+    (77, 150, "empty"),
+    (77, 331, "empty"),
+    (77, 151, "empty"),
+    (23, 335, "obstacle"),
+    (23, 155, "obstacle"),
+    (22, 341, "obstacle"),
+    (22, 161, "obstacle"),
+    (22, 343, "obstacle"),
+    (22, 163, "obstacle"),
+    (22, 348, "obstacle"),
+    (21, 168, "obstacle"),
+    (21, 351, "obstacle"),
+    (22, 171, "obstacle"),
+    (22, 356, "obstacle"),
+    (22, 176, "obstacle"),
+    (22, 0, "obstacle"),
+    (22, 180, "obstacle"),
+    (22, 3, "obstacle"),
+    (21, 183, "obstacle"),
+    (22, 8, "obstacle"),
+    (22, 188, "obstacle"),
+    (22, 11, "obstacle"),
+    (22, 191, "obstacle"),
+    (23, 17, "obstacle"),
+    (23, 197, "obstacle"),
+    (23, 20, "obstacle"),
+    (24, 200, "obstacle"),
+    (23, 24, "obstacle"),
+    (29, 204, "obstacle"),
+    (23, 29, "obstacle"),
+    (29, 209, "obstacle"),
+    (23, 30, "obstacle"),
+    (29, 210, "obstacle"),
+    (23, 37, "obstacle"),
+    (28, 217, "obstacle"),
+    (23, 39, "obstacle"),
+    (29, 219, "obstacle"),
+    (69, 44, "obstacle"),
+    (29, 224, "obstacle"),
+    (77, 46, "empty"),
+    (29, 226, "obstacle"),
+    (67, 51, "obstacle"),
+    (29, 231, "obstacle"),
+    (77, 54, "empty"),
+    (26, 234, "obstacle"),
+    (56, 60, "obstacle"),
+    (20, 240, "obstacle"),
+    (54, 62, "obstacle"),
+    (20, 242, "obstacle"),
+    (53, 67, "obstacle"),
+    (19, 247, "obstacle"),
+    (52, 70, "obstacle"),
+    (19, 250, "obstacle"),
+    (52, 74, "obstacle"),
+    (19, 254, "obstacle"),
+    (51, 80, "obstacle"),
+    (19, 260, "obstacle"),
+    (51, 82, "obstacle"),
+    (18, 262, "obstacle"),
+    (51, 87, "obstacle"),
+    (18, 267, "obstacle"),
+]
 
 # could rework this into a dict, or list of readings, for clear representation, but is arrays for memory conservation
+# other future improvements would be to use a probability model for more accurate map representation long term
 class Map:
     map_storage_vals = {"d_type": "h", "new": 0, "empty": -1, "obstacle": 1, "robot": 2}
     map_storage_keys = {0: "new", -1: "empty", 1: "obstacle", 2: "robot"}
@@ -68,6 +164,44 @@ class Map:
             self.map.append(array.array(Map.map_storage_vals["d_type"]))
             for j in range(width):
                 self.map[i].append(Map.map_storage_vals["new"])
+
+    def nearest_wall(self, cell):
+        """checks for the nearest wall in NSEW directions"""
+        closest = 999
+        (c_x, c_y) = cell
+        for i in range(self.height):
+            check = self.getitem(c_x, i)
+            if check == self.map_storage_vals["obstacle"]:
+                candidate = abs(c_y - i)
+                if candidate < closest:
+                    closest = candidate
+
+        for j in range(self.width):
+            check = self.getitem(j, c_y)
+            if check == self.map_storage_vals["obstacle"]:
+                candidate = abs(c_x - j)
+                if candidate < closest:
+                    closest = candidate
+        return closest
+
+    def cost(self, current, next):
+        """return the cost of moving from current cell to next. Wall buffer is implemented here."""
+        (c_x, c_y) = current
+        (n_x, n_y) = next
+        cost = abs(c_x - n_x) + abs(
+            c_y - n_y
+        )  # this should always be 1 in a grid, but just in case...
+        next_val = self.getitem(*next)
+        if next_val == self.map_storage_vals["obstacle"]:
+            cost = 999
+        wall_proximity = self.nearest_wall(next)
+        # print(wall_proximity)
+        # if turn required:
+        #     cost += 1
+        cost += 10 / (
+            int(wall_proximity**2) + 1
+        )  # simple inverse function to avoid walls
+        return int(cost)
 
     def add_to_map(self, id, value: str):
         (x, y) = id
@@ -228,6 +362,7 @@ def map_current_location(map):
         readings.extend(take_turret_reading())
         turret.run_to_position(i, direction="clockwise")
     turret.run_to_position(CONST_TURRET_HOME, direction="counterclockwise")
+    print(readings)
     convert_readings_to_map(readings, map)
 
 
@@ -350,37 +485,53 @@ def pathfind(map, goal):
     def heuristic(a, b):
         # basic manhattan distance
         # cannot *over*estimate the distance remaining, under is ok.
-        return abs(a.x - b.x) + abs(a.y - b.y)
+        (a_x, a_y) = a
+        (b_x, b_y) = b
+        return abs(a_x - b_x) + abs(a_y - b_y)
 
-    frontier = PriorityQueue()
+    frontier = []
     robot_loc = map.current_location()
     (x, y, a) = robot_loc  # for now we won't consider the facing angle in pathfinding
     start = (x, y)
-    frontier.put(start, 0)
+    heapq.heappush(frontier, (0, start))
     came_from = dict()
     cost_so_far = dict()
     came_from[start] = None
     cost_so_far[start] = 0
-
-    while not frontier.empty():
-        current = frontier.get()
-
-        if current == goal:
+    # print('Hi, frontier')
+    while bool(frontier):  # empty lists are falsey
+        current = heapq.heappop(frontier)
+        (score, (c_x, c_y)) = current
+        current_id = (c_x, c_y)
+        # print(frontier)
+        if (c_x, c_y) == goal:
             break
-
-        for next in map.neighbors(current):
-            new_cost = cost_so_far[current] + graph.cost(current, next)
+        for next in map.neighbors(current_id):
+            partial_cost = map.cost(current_id, next)
+            print(partial_cost)
+            new_cost = cost_so_far[current_id] + partial_cost
             if next not in cost_so_far or new_cost < cost_so_far[next]:
                 cost_so_far[next] = new_cost
                 priority = new_cost + heuristic(goal, next)
-                frontier.put(next, priority)
-                came_from[next] = current
+                heapq.heappush(frontier, (priority, next))
+                came_from[next] = current_id
+
+    current = goal
+    path = []
+    while current != start:
+        path.append(current)
+        current = came_from[current]
+    path.append(start)
+    path.reverse()
+    return path
 
 
 def movement_loop(map, goal=CONST_GOAL):
     # identify path
-    # identify movements
+    path = pathfind(map, goal)
+    # identify movements (4 - 8 steps of the path)
     # execute movements
+    print(path)
     turn_for_degrees(90)
     drive_for_cm(5 * CONST_MAP_CELL_SIZE)
     # create assumed robot location from movements
@@ -391,7 +542,8 @@ def movement_loop(map, goal=CONST_GOAL):
     robot_location_2 = (r_x + m_x, r_y + m_y, r_yaw + m_yaw)
     # create second map with assumed robot location
     newmap = Map(CONST_MAP_EDGE_X, CONST_MAP_EDGE_Y, robot_location_2)
-    map_current_location(newmap)
+    # map_current_location(newmap)
+
     # compare
     ideal = drift_calculation(map, newmap)
     print(ideal)
@@ -406,16 +558,18 @@ def movement_loop(map, goal=CONST_GOAL):
         x=-l_x, y=-l_y, yaw=None
     )  # the robot is displaced in the opposite direction of map movement
     # return whether goal was reached
-    return False
+    return True
 
 
 def main():
     print(gc.mem_free())
     global hub
     # initialize
-    robot_location = (*CONST_HOME, hub.motion_sensor.get_yaw_angle())
+    (h_x, h_y) = CONST_HOME
+    robot_location = (h_x, h_y, hub.motion_sensor.get_yaw_angle())
     map = Map(CONST_MAP_EDGE_X, CONST_MAP_EDGE_Y, robot_location)
-    map_current_location(map)
+    # map_current_location(map)
+    convert_readings_to_map(synthetic_reading_list, map)
     goal_found = False
     while not goal_found:
         goal_found = movement_loop(map)
