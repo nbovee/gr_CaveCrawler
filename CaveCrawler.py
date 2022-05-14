@@ -212,6 +212,10 @@ class Map:
         (x, y) = id
         return 0 <= x < self.width and 0 <= y < self.height
 
+    def is_not_wall(self, id) -> bool:
+        (x, y) = id
+        return self.map[y][x] != self.map_storage_vals["obstacle"]
+
     def neighbors(self, id):
         (x, y) = id
         neighbors = [(x + 1, y), (x - 1, y), (x, y - 1), (x, y + 1)]  # E W N S
@@ -507,7 +511,7 @@ def pathfind(map, goal):
         # print(frontier)
         if (c_x, c_y) == goal:
             break
-        for next in map.neighbors(current_id):
+        for next in filter(map.is_not_wall, map.neighbors(current_id)):
             partial_cost = map.cost(current_id, next)
             new_cost = cost_so_far[current_id] + partial_cost
             if next not in cost_so_far or new_cost < cost_so_far[next]:
@@ -571,6 +575,7 @@ def main():
     map = Map(CONST_MAP_EDGE_X, CONST_MAP_EDGE_Y, robot_location)
     # map_current_location(map)
     convert_readings_to_map(synthetic_reading_list, map)
+    del synthetic_reading_list
     goal_found = False
     while not goal_found:
         goal_found = movement_loop(map)
