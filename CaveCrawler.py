@@ -1,9 +1,29 @@
+"""
+Author: Nicholas Bovee
+This revision: 5/15/2022
+Latest revision can be found at: https://github.com/nbovee/CaveCrawler
+
+A video of the run from the accompanying log can be found here: https://www.youtube.com/watch?v=CwFstRNFZnY
+
+We can see that the numerical implementation of SLAM with A* is extremely successful, with accurate mapping until environmental 
+factors of slip and memory limitations on the Spike brick caused an error cascade. The errors appearance at the end of our trial 
+is due to the restrictive angular offset search implemented. If SLAM methods assume less deflection than they actually 
+encounter, then they are guaranteed to lose position over time. If we checked each potential offset up to say, 60 degrees, these 
+issues are within the capability of the SLAM program to correct. However, each additional angle we inspect adds to our processing 
+time, and standing still for 45 minutes filming was not going to happen at 3am. Secondary effects enhancing this error are the 
+inconsistent friction of the carpet, and the inability of ultrasonic sensors to accurately detect surfaces they are not normal to.
+
+Licensed Creative Commons Attribution-NonCommercial 4.0
+https://creativecommons.org/licenses/by-nc/4.0
+
+One of the best A* explanations I have found is at https://www.redblobgames.com/pathfinding/a-star/introduction.html
+Minor portions of the code are structured after their implementation examples.
+"""
+
 import heapq
 from spike import PrimeHub, DistanceSensor, Motor, MotorPair
 from math import radians, degrees, cos, sin, pi, copysign, sqrt, atan2
 from utime import sleep as wait_for_seconds
-
-# some mapping code inspired from https://www.redblobgames.com/pathfinding/a-star/implementation.html
 import gc
 import uarray as array
 
@@ -26,121 +46,25 @@ turret_motor = "D"
 
 # 63.5 x 152.5 cm2 area
 CONST_DO_REVERSE_PATH = False
+CONST_MOVE_STEPS = 8
 CONST_DETECTION_MAX_DIST_CM = 30
 CONST_APPROACH_DIST_CM = 4
 CONST_WAIT_TIME = 0.1
-CONST_MAP_EDGE_X = 26
-CONST_MAP_EDGE_Y = 56
-CONST_MAP_CELL_SIZE = 3
+CONST_MAP_EDGE_X = 16
+CONST_MAP_EDGE_Y = 34
+CONST_MAP_CELL_SIZE = 5
 CONST_MOTOR_SPEED = 30
 CONST_TURRET_SPEED = 20
 CONST_STOP_ACTION = "hold"
-CONST_USE_SHORTRANGE = False
+CONST_USE_SHORTRANGE = True
 CONST_MAX_SPIKE_CM_DIST = 70
 if CONST_USE_SHORTRANGE:
     CONST_MAX_SPIKE_CM_DIST = 30
 CONST_TURRET_HOME = 0
 CONST_TURRET_ANGLE_STEP = 4
 CONST_TURRET_SWEEP_END = 180 + CONST_TURRET_HOME + CONST_TURRET_ANGLE_STEP + 1
-CONST_HOME = (4, CONST_MAP_EDGE_Y - 6)
-CONST_GOAL = (4, 4)
-
-synthetic_reading_list = [
-    (19, 263, "obstacle"),
-    (51, 83, "obstacle"),
-    (19, 272, "obstacle"),
-    (51, 92, "obstacle"),
-    (18, 272, "obstacle"),
-    (51, 92, "obstacle"),
-    (19, 278, "obstacle"),
-    (52, 98, "obstacle"),
-    (19, 281, "obstacle"),
-    (51, 101, "obstacle"),
-    (19, 284, "obstacle"),
-    (51, 104, "obstacle"),
-    (19, 287, "obstacle"),
-    (52, 107, "obstacle"),
-    (20, 291, "obstacle"),
-    (51, 111, "obstacle"),
-    (21, 296, "obstacle"),
-    (53, 116, "obstacle"),
-    (28, 300, "obstacle"),
-    (54, 120, "obstacle"),
-    (28, 303, "obstacle"),
-    (56, 123, "obstacle"),
-    (27, 311, "obstacle"),
-    (57, 131, "obstacle"),
-    (27, 310, "obstacle"),
-    (57, 130, "obstacle"),
-    (29, 317, "obstacle"),
-    (77, 137, "empty"),
-    (28, 320, "obstacle"),
-    (77, 140, "empty"),
-    (29, 324, "obstacle"),
-    (77, 144, "empty"),
-    (77, 330, "empty"),
-    (77, 150, "empty"),
-    (77, 331, "empty"),
-    (77, 151, "empty"),
-    (23, 335, "obstacle"),
-    (23, 155, "obstacle"),
-    (22, 341, "obstacle"),
-    (22, 161, "obstacle"),
-    (22, 343, "obstacle"),
-    (22, 163, "obstacle"),
-    (22, 348, "obstacle"),
-    (21, 168, "obstacle"),
-    (21, 351, "obstacle"),
-    (22, 171, "obstacle"),
-    (22, 356, "obstacle"),
-    (22, 176, "obstacle"),
-    (22, 0, "obstacle"),
-    (22, 180, "obstacle"),
-    (22, 3, "obstacle"),
-    (21, 183, "obstacle"),
-    (22, 8, "obstacle"),
-    (22, 188, "obstacle"),
-    (22, 11, "obstacle"),
-    (22, 191, "obstacle"),
-    (23, 17, "obstacle"),
-    (23, 197, "obstacle"),
-    (23, 20, "obstacle"),
-    (24, 200, "obstacle"),
-    (23, 24, "obstacle"),
-    (29, 204, "obstacle"),
-    (23, 29, "obstacle"),
-    (29, 209, "obstacle"),
-    (23, 30, "obstacle"),
-    (29, 210, "obstacle"),
-    (23, 37, "obstacle"),
-    (28, 217, "obstacle"),
-    (23, 39, "obstacle"),
-    (29, 219, "obstacle"),
-    (69, 44, "obstacle"),
-    (29, 224, "obstacle"),
-    (77, 46, "empty"),
-    (29, 226, "obstacle"),
-    (67, 51, "obstacle"),
-    (29, 231, "obstacle"),
-    (77, 54, "empty"),
-    (26, 234, "obstacle"),
-    (56, 60, "obstacle"),
-    (20, 240, "obstacle"),
-    (54, 62, "obstacle"),
-    (20, 242, "obstacle"),
-    (53, 67, "obstacle"),
-    (19, 247, "obstacle"),
-    (52, 70, "obstacle"),
-    (19, 250, "obstacle"),
-    (52, 74, "obstacle"),
-    (19, 254, "obstacle"),
-    (51, 80, "obstacle"),
-    (19, 260, "obstacle"),
-    (51, 82, "obstacle"),
-    (18, 262, "obstacle"),
-    (51, 87, "obstacle"),
-    (18, 267, "obstacle"),
-]
+CONST_HOME = (CONST_MAP_EDGE_X - 4, CONST_MAP_EDGE_Y - 4)
+CONST_GOAL = (8, 6)
 
 # could rework this into a dict, or list of readings, for clear representation, but is arrays for memory conservation
 # other future improvements would be to use a probability model for more accurate map representation long term
@@ -193,11 +117,8 @@ class Map:
         )  # this should always be 1 in a grid, but just in case...
         next_val = self.getitem(*next)
         if next_val == self.map_storage_vals["obstacle"]:
-            cost = 999
+            cost = 999  # in case filtering is not used
         wall_proximity = self.nearest_wall(next)
-        # print(wall_proximity)
-        # if turn required:
-        #     cost += 1
         cost += 10 / (
             int(wall_proximity**2) + 1
         )  # simple inverse function to avoid walls
@@ -223,7 +144,7 @@ class Map:
             # helps paths look a little nicer
             neighbors.reverse()  # S N W E
         results = filter(self.in_bounds, neighbors)
-        # results = filter(self.passable, results)
+        results = filter(self.is_not_wall, results)
         return results
 
     def current_location(self):
@@ -244,10 +165,6 @@ class Map:
             self.robot_location_y += y
         if yaw is not None:
             self.robot_location_yaw += yaw
-
-    def expose(self):
-        """expose the internal map for first pass monolith programming"""
-        return self.map
 
     def __str__(self) -> str:
         output = ""
@@ -288,31 +205,34 @@ class Map:
         for i in range(self.height):
             for j in range(self.width):
                 item = map2.getitem(j, i)
-                if map2.getitem(j, i) != self.map_storage_vals["new"]:
+                if self.getitem(j, i) not in {
+                    self.map_storage_vals["obstacle"],
+                }:
                     self.map[i][j] = item
-        pass
+
 
 class Heap:
-    def __init__(self, max_size = 30) -> None:
+    def __init__(self, max_size=30) -> None:
         self.__heap = []
         self.max_size = max_size
 
     def push(self, element):
         # aggresively prune low likelihood cells to conserve RAM
-        if len(self.__heap) > self.max_size:
+        if bool(self.max_size) and len(self.__heap) > self.max_size:
             self.__heap.remove(max(self.__heap))
             # maintain heap structure
             heapq.heapify(self.__heap)
         heapq.heappush(self.__heap, element)
-    
+
     def pop(self):
-        heapq.heappop(self.__heap)
-    
+        return heapq.heappop(self.__heap)
+
     def has_elements(self):
         return bool(self.__heap)
 
     def __str__(self) -> str:
         return str(self.__heap)
+
 
 # initialize global objects
 hub = PrimeHub()
@@ -379,6 +299,7 @@ def map_current_location(map):
     # list comprehension fails for some reason...
     # newmap = [[ 0 for g in range(2*200/CONST_MAP_CELL_SIZE)] for k in range(2*200/CONST_MAP_CELL_SIZE)]
     # this should do some position checking to ensure no errors with tangled wires
+    print("Performing scan.", end="\n\n")
     turret.run_to_position(340, direction="shortest path")
     turret.run_to_position(354, direction="clockwise")
     readings = []
@@ -387,7 +308,6 @@ def map_current_location(map):
         readings.extend(take_turret_reading())
         turret.run_to_position(i, direction="clockwise")
     turret.run_to_position(CONST_TURRET_HOME, direction="counterclockwise")
-    print(readings)
     convert_readings_to_map(readings, map)
 
 
@@ -463,7 +383,7 @@ def rotate_map(map, angle):
         return map  # early exit
     robot_location = map.current_location()
     (x_loc, y_loc, yaw) = robot_location
-    newmap = Map(map.width, map.height, robot_location)
+    newmap = Map(map.width, map.height, (x_loc, y_loc, yaw - angle))
     for i in range(newmap.height):
         for j in range(newmap.width):
             value = map.map_storage_keys[map.getitem(j, i)]
@@ -490,20 +410,26 @@ def drift_calculation(prev_map, cur_map):
         (0, -1),
         (0, 1),
     ]  # assuming diagonal drift is not happening
-    angular_offsets = [0, -5, 5]  # major angular drift seems much harder to achieve
+    angular_offsets = [
+        0,
+        -5,
+        5,
+        -10,
+        10,
+    ]  # major angular drift seems much harder to achieve
     scores = []
+    print()
     for l in linear_offsets:
         for a in angular_offsets:
-            out = "Comparing a: " + str(a) + " l: " + str(l)
+            out = "Comparing angular offset: " + str(a) + " & linear offset: " + str(l)
             print(out)
             score = prev_map.compare_equal_shape_map(
                 rotate_map(offset_map(cur_map, l), a)
             )
             scores.append((score, l, a))
+    print()
     # currently we avoid storing an ideal map to avoid RAM issues, and bite bullet to recalculate
     return max(scores)
-
-    frontier = PriorityQueue()
 
 
 def pathfind(map, goal):
@@ -514,7 +440,9 @@ def pathfind(map, goal):
         (b_x, b_y) = b
         return abs(a_x - b_x) + abs(a_y - b_y)
 
-    frontier = Heap()
+    # testing showed that we would run out of memory at around 40 elements in the heap. Targetting below as a precaution.
+    print("Running A* Algorithm.")
+    frontier = Heap(max_size=30)
     robot_loc = map.current_location()
     (x, y, a) = robot_loc  # for now we won't consider the facing angle in pathfinding
     start = (x, y)
@@ -523,22 +451,18 @@ def pathfind(map, goal):
     cost_so_far = dict()
     came_from[start] = None
     cost_so_far[start] = 0
-    # print('Hi, frontier')
     while frontier.has_elements():
-        print(gc.mem_free())
         current = frontier.pop()
         (score, (c_x, c_y)) = current
         current_id = (c_x, c_y)
-        print(frontier)
         if (c_x, c_y) == goal:
             break
         # walls are never passable, and will clog our heap
         for next in filter(map.is_not_wall, map.neighbors(current_id)):
-            partial_cost = map.cost(current_id, next)
-            new_cost = cost_so_far[current_id] + partial_cost
+            # partial_cost = map.cost(current_id, next)
+            new_cost = cost_so_far[current_id] + map.cost(current_id, next)
             # excluding the second term below implements MPP by assuming the first encounter is the ideal.
-            if next not in cost_so_far: # or new_cost < cost_so_far[next]:
-                print(gc.mem_free())
+            if next not in cost_so_far:  # or new_cost < cost_so_far[next]:
                 cost_so_far[next] = new_cost
                 priority = new_cost + heuristic(goal, next)
                 frontier.push((priority, next))
@@ -550,65 +474,124 @@ def pathfind(map, goal):
         path.append(current)
         current = came_from[current]
     path.append(start)
-    path.reverse()
+    # cleaner processing if we do not reverse the path
+    # path.reverse()
     return path
 
 
 def movement_loop(map, goal=CONST_GOAL):
     # identify path
     path = pathfind(map, goal)
-    # identify movements (4 - 8 steps of the path)
-    # execute movements
-    print(path)
-    turn_for_degrees(90)
-    drive_for_cm(5 * CONST_MAP_CELL_SIZE)
+    print("A* complete, selected the following path:")
+    print(path, end="\n\n")
+    # identify movements
+    current_cell = path.pop()
+    direction_dict = {(0, -1): "N", (1, 0): "E", (0, 1): "S", (-1, 0): "W"}
+    angle_dict = {0: "N", 90: "E", 180: "S", 270: "W"}
+    (_, _, angle) = map.current_location()
+    current_direction = angle_dict[angle]
+    print("Current robot heading is " + current_direction + ".")
+    steps = min(CONST_MOVE_STEPS, len(path))
+    print("Executing " + str(steps) + " motions.")
+    for i in range(steps):
+        print("Motion " + str(i) + ":")
+        next_cell = path.pop()  # pop with no index pulls from list[-1]
+        (c_x, c_y) = current_cell
+        (n_x, n_y) = next_cell
+        next_direction = direction_dict[
+            (n_x - c_x), (n_y - c_y)
+        ]  # this functions on world coordinates
+        # turn to face
+        turn_amount = 0
+        drive_amount = CONST_MAP_CELL_SIZE
+        if next_direction != current_direction:
+            # either we turn left 90, turn right 90, or turn 180
+            dir_list = ["N", "E", "S", "W"]  # dict values wont be in this order
+            turn_code = dir_list.index(next_direction) - dir_list.index(
+                current_direction
+            )
+            if turn_code in {1, -3}:
+                turn_amount = 90
+            elif turn_code in {-1, 3}:
+                turn_amount = -90
+            else:
+                turn_amount = 180
+            # execute movements, set to coast for smoothness
+            print("\tTurning to face " + next_direction + ".")
+        if i == 0:
+            motors.set_stop_action("coast")
+        if turn_amount != 0:
+            turn_for_degrees(turn_amount)
+        if i == steps - 1:
+            motors.set_stop_action(CONST_STOP_ACTION)
+        print("\tDriving for: " + str(drive_amount) + " cm.")
+        drive_for_cm(drive_amount)
+        current_cell = next_cell
+        current_direction = next_direction
     # create assumed robot location from movements
-    (r_x, r_y, r_yaw) = map.current_location()
-    m_x = 5
-    m_y = 0
-    m_yaw = 90
-    robot_location_2 = (r_x + m_x, r_y + m_y, r_yaw + m_yaw)
+    # we ignore the IMU and assume heading based on grid motions
+    yaw_dict = {"N": 0, "E": 90, "S": 180, "W": 270}
+    robot_yaw = yaw_dict[current_direction]
+    # robot location is assumed to be the last cell of the path
+    (robot_x, robot_y) = current_cell
     # create second map with assumed robot location
-    newmap = Map(CONST_MAP_EDGE_X, CONST_MAP_EDGE_Y, robot_location_2)
-    # map_current_location(newmap)
-
+    newmap = Map(CONST_MAP_EDGE_X, CONST_MAP_EDGE_Y, (robot_x, robot_y, robot_yaw))
+    map_current_location(newmap)
+    print("Map after motions:")
+    print(newmap)
     # compare
     ideal = drift_calculation(map, newmap)
-    print(ideal)
-    # combine
+    # combine and inherit the best scored transformation as accurate.
     (_, l, a) = ideal
-    (l_x, l_y) = l
+    print(
+        "The best transformation is an offset of: "
+        + str(l)
+        + " and a rotation of: "
+        + str(a)
+        + " degrees.",
+        end="\n\n",
+    )
+    print("Combining original map with new values.")
     map.combine_maps(rotate_map(offset_map(newmap, l), a))
-    del newmap  # make sure gc deletes this
-    # compensate yaw outside orthagonal directions ( our A* only wants those headings )
-    # update location
+    # update location (yaw will be ideal momentarily)
+    (lx, ly) = l
+    new_x = newmap.robot_location_x - lx
+    new_y = newmap.robot_location_y - ly
+    # the robot is displaced in the opposite direction of map movement
     map.update_location(
-        x=-l_x, y=-l_y, yaw=None
-    )  # the robot is displaced in the opposite direction of map movement
+        x=new_x,
+        y=new_y,
+        yaw=newmap.robot_location_yaw,
+    )
+    del newmap  # ensure memory is released
+    # compensate yaw
+    turn_for_degrees(-a)
+    print("Combined Map:")
+    print(map)
     # return whether goal was reached
-    return True
+    return CONST_GOAL == (new_x, new_y)
 
 
 def main():
-    print(gc.mem_free())
     global hub
+    # assume the robot is placed accurately at the start location facing north
+    hub.motion_sensor.reset_yaw_angle()
+    print("Starting CaveCrawler.", end="\n\n")
     # initialize
     (h_x, h_y) = CONST_HOME
     robot_location = (h_x, h_y, hub.motion_sensor.get_yaw_angle())
     map = Map(CONST_MAP_EDGE_X, CONST_MAP_EDGE_Y, robot_location)
-    # map_current_location(map)
-    convert_readings_to_map(synthetic_reading_list, map)
-    del synthetic_reading_list
+    map_current_location(map)
+    print("First Map:")
+    print(map)
     goal_found = False
     while not goal_found:
         goal_found = movement_loop(map)
-    print(gc.mem_free())
     # do the reverse path if we want
     if CONST_DO_REVERSE_PATH:
         goal_found = False
     while not goal_found:
         goal_found = movement_loop(map, goal=CONST_HOME)
-    print(gc.mem_free())
     raise SystemExit
 
 
