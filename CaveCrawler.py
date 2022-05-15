@@ -292,6 +292,27 @@ class Map:
                     self.map[i][j] = item
         pass
 
+class Heap:
+    def __init__(self, max_size = 30) -> None:
+        self.__heap = []
+        self.max_size = max_size
+
+    def push(self, element):
+        # aggresively prune low likelihood cells to conserve RAM
+        if len(self.__heap) > self.max_size:
+            self.__heap.remove(max(self.__heap))
+            # maintain heap structure
+            heapq.heapify(self.__heap)
+        heapq.heappush(self.__heap, element)
+    
+    def pop(self):
+        heapq.heappop(self.__heap)
+    
+    def has_elements(self):
+        return bool(self.__heap)
+
+    def __str__(self) -> str:
+        return str(self.__heap)
 
 # initialize global objects
 hub = PrimeHub()
@@ -493,32 +514,34 @@ def pathfind(map, goal):
         (b_x, b_y) = b
         return abs(a_x - b_x) + abs(a_y - b_y)
 
-    frontier = []
+    frontier = Heap()
     robot_loc = map.current_location()
     (x, y, a) = robot_loc  # for now we won't consider the facing angle in pathfinding
     start = (x, y)
-    heapq.heappush(frontier, (0, start))
+    frontier.push((0, start))
     came_from = dict()
     cost_so_far = dict()
     came_from[start] = None
     cost_so_far[start] = 0
     # print('Hi, frontier')
-    while bool(frontier):  # empty lists are falsey
+    while frontier.has_elements():
         print(gc.mem_free())
-        current = heapq.heappop(frontier)
+        current = frontier.pop()
         (score, (c_x, c_y)) = current
         current_id = (c_x, c_y)
-        # print(frontier)
+        print(frontier)
         if (c_x, c_y) == goal:
             break
+        # walls are never passable, and will clog our heap
         for next in filter(map.is_not_wall, map.neighbors(current_id)):
             partial_cost = map.cost(current_id, next)
             new_cost = cost_so_far[current_id] + partial_cost
-            if next not in cost_so_far or new_cost < cost_so_far[next]:
+            # excluding the second term below implements MPP by assuming the first encounter is the ideal.
+            if next not in cost_so_far: # or new_cost < cost_so_far[next]:
                 print(gc.mem_free())
                 cost_so_far[next] = new_cost
                 priority = new_cost + heuristic(goal, next)
-                heapq.heappush(frontier, (priority, next))
+                frontier.push((priority, next))
                 came_from[next] = current_id
 
     current = goal
